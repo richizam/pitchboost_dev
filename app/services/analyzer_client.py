@@ -1,3 +1,4 @@
+# analyzer_client.py
 from app.schemas.analyze import AnalyzeResponse, Scores
 
 class AnalyzerClient:

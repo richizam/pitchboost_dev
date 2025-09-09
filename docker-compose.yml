@@ -1,21 +1,81 @@
+#docker-compose
+networks:
+  appnet:
+    name: pitchboost-net
+
 services:
+  kafka:
+    image: bitnami/kafka:3.7
+    restart: unless-stopped
+    networks: [appnet]
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ENABLE_KRAFT: "yes"
+      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CFG_NODE_ID: "1"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+    healthcheck:
+      test: ["CMD", "/opt/bitnami/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  kafka-init:
+    image: bitnami/kafka:3.7
+    networks: [appnet]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-lc"]
+    command: >
+      "/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092
+      --create --if-not-exists --topic aith.messages.processing
+      --partitions 1 --replication-factor 1 || true;
+      /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092
+      --create --if-not-exists --topic aith.messages.result
+      --partitions 1 --replication-factor 1 || true"
+
   api:
     build: .
     container_name: pitchboost-api-gateway
+    restart: unless-stopped
+    networks: [appnet]
     ports: ["8000:8000"]
     env_file: [.env]
     volumes:
       - ./app:/app/app:ro
       - ./.env:/app/.env:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
 
   bot:
     image: python:3.11-slim
     working_dir: /bot
-    command: bash -lc "pip install aiogram==3.13.1 httpx==0.27.0 && python run.py"
+    restart: unless-stopped
+    networks: [appnet]
+    command: >
+      bash -lc "pip install aiogram==3.13.1 httpx==0.27.0 confluent-kafka==2.5.3 &&
+                python run.py"
     env_file: [.env]
     environment:
       API_BASE_URL: "http://api:8000"
     volumes:
       - ./bot:/bot
     depends_on:
-      - api
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
