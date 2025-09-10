@@ -22,7 +22,7 @@ def test_kafka_payload_shape(client, monkeypatch):
         "/v1/analyze",
         json={
             "user_id": "u1",
-            "scenario": "investor",
+            "scenario": "recommendation",
             "duration_minutes": 1,
             "audio_url": "http://example.com/a.ogg",
             "media_duration_sec": 10,

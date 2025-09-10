@@ -21,7 +21,7 @@ def test_duration_gate(client, monkeypatch):
         "/v1/analyze",
         json={
             "user_id": "u1",
-            "scenario": "investor",
+            "scenario": "recommendation",
             "duration_minutes": 1,
             "audio_url": "http://example.com/a.ogg",
             "media_duration_sec": settings.AUDIO_MAX_SECONDS + 1,
@@ -33,7 +33,7 @@ def test_duration_gate(client, monkeypatch):
         "/v1/analyze",
         json={
             "user_id": "u1",
-            "scenario": "investor",
+            "scenario": "recommendation",
             "duration_minutes": 1,
             "audio_url": "http://example.com/a.ogg",
             "media_duration_sec": settings.AUDIO_MAX_SECONDS - 1,

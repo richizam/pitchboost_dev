@@ -30,11 +30,11 @@ dp = Dispatcher()
 
 # ---------- UI helpers ----------
 SCENARIO_LABELS = {
-    "investor": "Инвестор",
-    "client": "Клиент",
-    "academic": "Академический",
+    "recommendation": "Рекомендации",
+    "evaluation": "Оценка",
+    "adaptation": "Адаптация",
 }
-SCENARIO_ORDER = ["investor", "client", "academic"]
+SCENARIO_ORDER = ["recommendation", "evaluation", "adaptation"]
 DURATION_ORDER = [1, 3, 5]  # минуты
 
 
@@ -45,7 +45,7 @@ def tg_file_url(token: str, file_path: str) -> str:
 @dataclass
 class UserSession:
     audio_url: Optional[str] = None
-    scenario: str = "investor"
+    scenario: str = "recommendation"
     shorten: bool = False
     duration_minutes: int = 1
     menu_message_id: Optional[int] = None
@@ -116,7 +116,7 @@ async def cmd_start(msg: Message):
         "👋 Добро пожаловать в *PitchBoost Bot*!\n\n"
         "Отправьте мне голосовое сообщение 🎙️ со своим питчем.\n\n"
         "После этого вы сможете выбрать:\n"
-        "• *Сценарий*: 💼 Инвестор | 🤝 Клиент | 🎓 Академический\n"
+        "• *Сценарий*: 💡 Рекомендации | 📝 Оценка | 🔧 Адаптация\n"
         "• *Сокращение*: ✂️ 1, 3 или 5 минут или полный разбор\n\n"
         "Я дам вам обратную связь 💡: сильные стороны, зоны роста и улучшенную версию питча."
     )
