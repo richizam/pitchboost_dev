@@ -300,20 +300,9 @@ async def run_analysis(call: CallbackQuery):
 @dp.message(F.text == "/buy")
 async def cmd_buy(msg: Message):
     user_id = msg.from_user.id
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            await client.post(
-                f"{API_BASE_URL}/v1/pay", json={"tg_user_id": str(user_id), "amount": 5}
-            )
-            r = await client.get(f"{API_BASE_URL}/v1/credits/{user_id}")
-            data = r.json()
-    except Exception:
-        await msg.answer("Ошибка платежа")
-        return
-
+    checkout_url = f"{API_BASE_URL}/v1/checkout?tg_user_id={user_id}"
     await msg.answer(
-        "Пополнено. Баланс: "
-        f"{data.get('total_remaining', 0)} (платные: {data.get('paid', 0)})"
+        "Чтобы купить 20 попыток за 700 ₽, перейдите по ссылке:\n" + checkout_url
     )
 
 
