@@ -46,6 +46,7 @@ def tg_file_url(token: str, file_path: str) -> str:
 class UserSession:
     audio_url: Optional[str] = None
     scenario: str = "investor"
+    shorten: bool = False
     duration_minutes: int = 1
     menu_message_id: Optional[int] = None
     menu_chat_id: Optional[int] = None
@@ -57,48 +58,55 @@ sessions: Dict[int, UserSession] = {}
 
 
 def build_menu(session: UserSession) -> "InlineKeyboardMarkup":
-    """
-    Teclado con selección de escenario + duración + acciones.
-    Marca la opción elegida con '✅'.
-    """
+    """Construye клавиатуру с выбором сценария, режима и длительности."""
     kb = InlineKeyboardBuilder()
 
     # Escenarios (fila 1)
-    row = []
     for sc in SCENARIO_ORDER:
         label = SCENARIO_LABELS[sc]
-        if sc == session.scenario:
-            text = f"✅ {label}"
-        else:
-            text = label
+        text = f"✅ {label}" if sc == session.scenario else label
         kb.button(text=text, callback_data=f"sc:{sc}")
-    kb.adjust(3)
 
-    # Duraciones (fila 2)
-    for dur in DURATION_ORDER:
-        if dur == session.duration_minutes:
-            text = f"✅ {dur} мин"
-        else:
-            text = f"{dur} мин"
-        kb.button(text=text, callback_data=f"du:{dur}")
-    kb.adjust(3, 3)
+    # Режим: сокращение или полный разбор (fila 2)
+    if session.shorten:
+        txt_short = "✅ ✂️ Сократить питч"
+        txt_full = "➡️ Без сокращения"
+    else:
+        txt_short = "✂️ Сократить питч"
+        txt_full = "✅ ➡️ Без сокращения"
+    kb.button(text=txt_short, callback_data="sh:1")
+    kb.button(text=txt_full, callback_data="sh:0")
 
-    # Acciones (fila 3)
+    # Duraciones (fila 3) — только если выбран режим сокращения
+    if session.shorten:
+        for dur in DURATION_ORDER:
+            text = f"✅ {dur} мин" if dur == session.duration_minutes else f"{dur} мин"
+            kb.button(text=text, callback_data=f"du:{dur}")
+
+    # Acciones (última fila)
     kb.button(text="🚀 Отправить на анализ", callback_data="go:analyze")
     kb.button(text="🔄 Сбросить", callback_data="go:reset")
-    kb.adjust(3, 3, 2)
+
+    if session.shorten:
+        kb.adjust(3, 2, 3, 2)
+    else:
+        kb.adjust(3, 2, 2)
 
     return kb.as_markup()
 
 
 def menu_text(session: UserSession) -> str:
-    return (
+    text = (
         "🎙️ *Анализ питча*\n\n"
-        "Выберите *сценарий* и *длительность* обзора.\n\n"
+        "Выберите *сценарий* и при необходимости *сокращение*.\n\n"
         f"• Сценарий: *{SCENARIO_LABELS.get(session.scenario, '—')}*\n"
-        f"• Длительность: *{session.duration_minutes} мин*\n\n"
-        "Когда всё готово — нажмите _«Отправить на анализ»_."
     )
+    if session.shorten:
+        text += f"• Сокращение: *{session.duration_minutes} мин*\n\n"
+    else:
+        text += "• Без сокращения\n\n"
+    text += "Когда всё готово — нажмите _«Отправить на анализ»_."
+    return text
 
 
 # ---------- Handlers ----------
@@ -109,7 +117,7 @@ async def cmd_start(msg: Message):
         "Отправьте мне голосовое сообщение 🎙️ со своим питчем.\n\n"
         "После этого вы сможете выбрать:\n"
         "• *Сценарий*: 💼 Инвестор | 🤝 Клиент | 🎓 Академический\n"
-        "• *Длительность*: ⏱️ 1, 3 или 5 минут\n\n"
+        "• *Сокращение*: ✂️ 1, 3 или 5 минут или полный разбор\n\n"
         "Я дам вам обратную связь 💡: сильные стороны, зоны роста и улучшенную версию питча."
     )
     await msg.answer(text, parse_mode="Markdown")
@@ -120,7 +128,7 @@ async def handle_voice(msg: Message):
     """
     1) Получаем file_path от Telegram → собираем прямой file URL.
     2) Запоминаем URL в сессии пользователя.
-    3) Показываем меню выбора сценария и длительности.
+    3) Показываем меню выбора сценария и режима анализа.
     """
     user_id = msg.from_user.id
     duration = msg.voice.duration
@@ -148,7 +156,7 @@ async def handle_voice(msg: Message):
 
     text = (
         "💡 *Шаг 1/2*. Я получил голосовое сообщение.\n"
-        "Теперь выберите *сценарий* и *длительность* для анализа.\n"
+        "Теперь выберите *сценарий* и при необходимости *сокращение*.\n"
         "После этого я отправлю запрос и пришлю итог, как только он будет готов."
     )
     await msg.answer(text, parse_mode="Markdown")
@@ -189,7 +197,7 @@ async def handle_audio(msg: Message):
 
     text = (
         "💡 *Шаг 1/2*. Я получил аудиофайл.\n"
-        "Теперь выберите *сценарий* и *длительность* для анализа.\n"
+        "Теперь выберите *сценарий* и при необходимости *сокращение*.\n"
         "После этого я отправлю запрос и пришлю итог, как только он будет готов."
     )
     await msg.answer(text, parse_mode="Markdown")
@@ -216,6 +224,21 @@ async def set_scenario(call: CallbackQuery):
         )
     except Exception:
         # Algunos clientes no permiten editar texto demasiado a menudo — actualizamos sólo клавиатуру
+        await call.message.edit_reply_markup(build_menu(session))
+
+
+@dp.callback_query(F.data.startswith("sh:"))
+async def set_shorten(call: CallbackQuery):
+    user_id = call.from_user.id
+    session = sessions.get(user_id) or UserSession()
+    session.shorten = call.data.split(":", 1)[1] == "1"
+    sessions[user_id] = session
+    await call.answer("Сокращение" if session.shorten else "Без сокращения")
+    try:
+        await call.message.edit_text(
+            menu_text(session), parse_mode="Markdown", reply_markup=build_menu(session)
+        )
+    except Exception:
         await call.message.edit_reply_markup(build_menu(session))
 
 
@@ -253,7 +276,7 @@ async def reset_session(call: CallbackQuery):
 async def run_analysis(call: CallbackQuery):
     """
     Когда пользователь нажимает «Отправить на анализ», шлём POST в API:
-    { user_id, scenario, duration_minutes, audio_url }.
+    { user_id, scenario, audio_url, [duration_minutes] }.
     Дальше результат придёт через Kafka → бот отправит ответ в чат.
     """
     user_id = call.from_user.id
@@ -265,10 +288,11 @@ async def run_analysis(call: CallbackQuery):
     payload = {
         "user_id": str(user_id),
         "scenario": session.scenario,
-        "duration_minutes": session.duration_minutes,
         "audio_url": session.audio_url,
         "media_duration_sec": session.media_duration_sec,
     }
+    if session.shorten:
+        payload["duration_minutes"] = session.duration_minutes
 
     try:
         await call.answer("Отправляю…")
@@ -287,12 +311,15 @@ async def run_analysis(call: CallbackQuery):
         return
 
     # UX: подтвердить и напомнить что ответ придёт позже (через Kafka)
-    await call.message.answer(
+    confirm = (
         "✅ Запрос принят! Я пришлю результат, как только он будет готов.\n\n"
         f"• Сценарий: *{SCENARIO_LABELS.get(session.scenario, '—')}*\n"
-        f"• Длительность: *{session.duration_minutes} мин*",
-        parse_mode="Markdown",
     )
+    if session.shorten:
+        confirm += f"• Сокращение: *{session.duration_minutes} мин*"
+    else:
+        confirm += "• Без сокращения"
+    await call.message.answer(confirm, parse_mode="Markdown")
 
 
 # ---- payments ----
