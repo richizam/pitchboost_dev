@@ -1,13 +1,30 @@
 #docker-compose
 networks:
-  appnet:
-    name: pitchboost-net
+  pitchboost-net:
+    external: true
 
 services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    networks: [pitchboost-net]
+    env_file: [.env]
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   kafka:
     image: bitnami/kafka:3.7
     restart: unless-stopped
-    networks: [appnet]
+    networks: [pitchboost-net]
     ports:
       - "9092:9092"
     environment:
@@ -30,30 +47,33 @@ services:
 
   kafka-init:
     image: bitnami/kafka:3.7
-    networks: [appnet]
+    networks: [pitchboost-net]
+    env_file: [.env]
     depends_on:
       kafka:
         condition: service_healthy
     entrypoint: ["/bin/bash", "-lc"]
     command: >
       "/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092
-      --create --if-not-exists --topic aith.messages.processing
+      --create --if-not-exists --topic ${KAFKA_TOPIC_IN}
       --partitions 1 --replication-factor 1 || true;
       /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092
-      --create --if-not-exists --topic aith.messages.result
+      --create --if-not-exists --topic ${KAFKA_TOPIC_OUT}
       --partitions 1 --replication-factor 1 || true"
 
   api:
     build: .
     container_name: pitchboost-api-gateway
     restart: unless-stopped
-    networks: [appnet]
+    networks: [pitchboost-net]
     ports: ["8000:8000"]
     env_file: [.env]
     volumes:
       - ./app:/app/app:ro
       - ./.env:/app/.env:ro
     depends_on:
+      db:
+        condition: service_healthy
       kafka:
         condition: service_healthy
       kafka-init:
@@ -63,7 +83,7 @@ services:
     image: python:3.11-slim
     working_dir: /bot
     restart: unless-stopped
-    networks: [appnet]
+    networks: [pitchboost-net]
     command: >
       bash -lc "pip install aiogram==3.13.1 httpx==0.27.0 confluent-kafka==2.5.3 &&
                 python run.py"
@@ -79,3 +99,6 @@ services:
         condition: service_completed_successfully
       api:
         condition: service_started
+
+volumes:
+  postgres_data:

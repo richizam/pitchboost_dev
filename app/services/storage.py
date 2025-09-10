@@ -7,8 +7,10 @@ from typing import Tuple, Dict
 
 import boto3
 import httpx
+from fastapi import HTTPException
 
 from app.core.logging import logger
+from app.core.config import settings
 
 S3_ENDPOINT = os.getenv("S3_ENDPOINT", "https://storage.yandexcloud.net")
 S3_REGION = os.getenv("S3_REGION", "ru-central1")
@@ -30,16 +32,20 @@ _s3 = boto3.client(
 )
 
 
-def _guess_ext(content_type: str, default: str = ".bin") -> str:
-    import mimetypes
-    if not content_type:
-        return default
-    ext = mimetypes.guess_extension(content_type)
-    return ext or default
+ALLOWED_TYPES = {"audio/ogg": ".ogg", "audio/mpeg": ".mp3", "audio/wav": ".wav"}
 
 
-def _object_key(user_id: str, content_type: str) -> str:
-    ext = _guess_ext(content_type, ".bin")
+def _guess_ext(content_type: str, url: str, default: str = ".bin") -> str:
+    if content_type in ALLOWED_TYPES:
+        return ALLOWED_TYPES[content_type]
+    lower = url.lower()
+    if lower.endswith(".oga") or lower.endswith(".ogg"):
+        return ".ogg"
+    return default
+
+
+def _object_key(user_id: str, content_type: str, url: str) -> str:
+    ext = _guess_ext(content_type, url, ".bin")
     if AUDIO_KEY_STYLE == "flat":
         return f"{ENV_NAME}/{uuid.uuid4().hex}{ext}"
     else:
@@ -54,7 +60,11 @@ class StorageService:
 
     async def download_to_bytes(self, url: str) -> Tuple[bytes, str]:
         url = str(url)
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            head = await client.head(url)
+            size = head.headers.get("Content-Length")
+            if size and int(size) > settings.AUDIO_MAX_CONTENT_LENGTH:
+                raise HTTPException(status_code=400, detail="Audio too large")
             r = await client.get(url)
             r.raise_for_status()
             blob = r.content
@@ -63,7 +73,7 @@ class StorageService:
 
     async def upload_audio_from_url(self, *, url: str, user_id: str) -> Dict[str, str]:
         blob, ctype = await self.download_to_bytes(url)
-        key = _object_key(user_id=user_id, content_type=ctype)
+        key = _object_key(user_id=user_id, content_type=ctype, url=url)
 
         from functools import partial
         import asyncio
@@ -83,7 +93,9 @@ class StorageService:
         )
         await asyncio.to_thread(put_call)
 
-        logger.info(f"Uploaded audio to s3://{self.bucket}/{key} size={len(blob)} ctype={ctype}")
+        logger.info(
+            f"Uploaded audio to s3://{self.bucket}/{key} size={len(blob)} ctype={ctype}"
+        )
         return {
             "bucket": self.bucket,
             "key": key,
