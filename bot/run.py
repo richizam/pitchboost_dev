@@ -46,7 +46,6 @@ def tg_file_url(token: str, file_path: str) -> str:
 class UserSession:
     audio_url: Optional[str] = None
     scenario: str = "recommendation"
-    shorten: bool = False
     duration_minutes: int = 1
     menu_message_id: Optional[int] = None
     menu_chat_id: Optional[int] = None
@@ -58,7 +57,7 @@ sessions: Dict[int, UserSession] = {}
 
 
 def build_menu(session: UserSession) -> "InlineKeyboardMarkup":
-    """Construye клавиатуру с выбором сценария, режима и длительности."""
+    """Construye клавиатуру с выбором сценария и, при необходимости, длительности."""
     kb = InlineKeyboardBuilder()
 
     # Escenarios (fila 1)
@@ -67,30 +66,20 @@ def build_menu(session: UserSession) -> "InlineKeyboardMarkup":
         text = f"✅ {label}" if sc == session.scenario else label
         kb.button(text=text, callback_data=f"sc:{sc}")
 
-    # Режим: сокращение или полный разбор (fila 2)
-    if session.shorten:
-        txt_short = "✅ ✂️ Сократить питч"
-        txt_full = "➡️ Без сокращения"
-    else:
-        txt_short = "✂️ Сократить питч"
-        txt_full = "✅ ➡️ Без сокращения"
-    kb.button(text=txt_short, callback_data="sh:1")
-    kb.button(text=txt_full, callback_data="sh:0")
-
-    # Duraciones (fila 3) — только если выбран режим сокращения
-    if session.shorten:
+    # Duraciones (fila 2) — только для сценария адаптации
+    if session.scenario == "adaptation":
         for dur in DURATION_ORDER:
             text = f"✅ {dur} мин" if dur == session.duration_minutes else f"{dur} мин"
             kb.button(text=text, callback_data=f"du:{dur}")
 
-    # Acciones (última fila)
+    # Acciones (últняя fila)
     kb.button(text="🚀 Отправить на анализ", callback_data="go:analyze")
     kb.button(text="🔄 Сбросить", callback_data="go:reset")
 
-    if session.shorten:
-        kb.adjust(3, 2, 3, 2)
+    if session.scenario == "adaptation":
+        kb.adjust(3, 3, 2)
     else:
-        kb.adjust(3, 2, 2)
+        kb.adjust(3, 2)
 
     return kb.as_markup()
 
@@ -98,13 +87,13 @@ def build_menu(session: UserSession) -> "InlineKeyboardMarkup":
 def menu_text(session: UserSession) -> str:
     text = (
         "🎙️ *Анализ питча*\n\n"
-        "Выберите *сценарий* и при необходимости *сокращение*.\n\n"
+        "Выберите *сценарий*. Для адаптации можно указать длительность.\n\n"
         f"• Сценарий: *{SCENARIO_LABELS.get(session.scenario, '—')}*\n"
     )
-    if session.shorten:
-        text += f"• Сокращение: *{session.duration_minutes} мин*\n\n"
+    if session.scenario == "adaptation":
+        text += f"• Длительность: *{session.duration_minutes} мин*\n\n"
     else:
-        text += "• Без сокращения\n\n"
+        text += "\n"
     text += "Когда всё готово — нажмите _«Отправить на анализ»_."
     return text
 
@@ -117,7 +106,7 @@ async def cmd_start(msg: Message):
         "Отправьте мне голосовое сообщение 🎙️ со своим питчем.\n\n"
         "После этого вы сможете выбрать:\n"
         "• *Сценарий*: 💡 Рекомендации | 📝 Оценка | 🔧 Адаптация\n"
-        "• *Сокращение*: ✂️ 1, 3 или 5 минут или полный разбор\n\n"
+        "• Для адаптации: длительность 1, 3 или 5 минут\n\n"
         "Я дам вам обратную связь 💡: сильные стороны, зоны роста и улучшенную версию питча."
     )
     await msg.answer(text, parse_mode="Markdown")
@@ -128,7 +117,7 @@ async def handle_voice(msg: Message):
     """
     1) Получаем file_path от Telegram → собираем прямой file URL.
     2) Запоминаем URL в сессии пользователя.
-    3) Показываем меню выбора сценария и режима анализа.
+    3) Показываем меню выбора сценария и длительности (для адаптации).
     """
     user_id = msg.from_user.id
     duration = msg.voice.duration
@@ -156,7 +145,7 @@ async def handle_voice(msg: Message):
 
     text = (
         "💡 *Шаг 1/2*. Я получил голосовое сообщение.\n"
-        "Теперь выберите *сценарий* и при необходимости *сокращение*.\n"
+        "Теперь выберите *сценарий*. Для адаптации можно указать длительность.\n"
         "После этого я отправлю запрос и пришлю итог, как только он будет готов."
     )
     await msg.answer(text, parse_mode="Markdown")
@@ -197,7 +186,7 @@ async def handle_audio(msg: Message):
 
     text = (
         "💡 *Шаг 1/2*. Я получил аудиофайл.\n"
-        "Теперь выберите *сценарий* и при необходимости *сокращение*.\n"
+        "Теперь выберите *сценарий*. Для адаптации можно указать длительность.\n"
         "После этого я отправлю запрос и пришлю итог, как только он будет готов."
     )
     await msg.answer(text, parse_mode="Markdown")
@@ -224,21 +213,6 @@ async def set_scenario(call: CallbackQuery):
         )
     except Exception:
         # Algunos clientes no permiten editar texto demasiado a menudo — actualizamos sólo клавиатуру
-        await call.message.edit_reply_markup(build_menu(session))
-
-
-@dp.callback_query(F.data.startswith("sh:"))
-async def set_shorten(call: CallbackQuery):
-    user_id = call.from_user.id
-    session = sessions.get(user_id) or UserSession()
-    session.shorten = call.data.split(":", 1)[1] == "1"
-    sessions[user_id] = session
-    await call.answer("Сокращение" if session.shorten else "Без сокращения")
-    try:
-        await call.message.edit_text(
-            menu_text(session), parse_mode="Markdown", reply_markup=build_menu(session)
-        )
-    except Exception:
         await call.message.edit_reply_markup(build_menu(session))
 
 
@@ -291,7 +265,7 @@ async def run_analysis(call: CallbackQuery):
         "audio_url": session.audio_url,
         "media_duration_sec": session.media_duration_sec,
     }
-    if session.shorten:
+    if session.scenario == "adaptation":
         payload["duration_minutes"] = session.duration_minutes
 
     try:
@@ -315,10 +289,8 @@ async def run_analysis(call: CallbackQuery):
         "✅ Запрос принят! Я пришлю результат, как только он будет готов.\n\n"
         f"• Сценарий: *{SCENARIO_LABELS.get(session.scenario, '—')}*\n"
     )
-    if session.shorten:
-        confirm += f"• Сокращение: *{session.duration_minutes} мин*"
-    else:
-        confirm += "• Без сокращения"
+    if session.scenario == "adaptation":
+        confirm += f"• Длительность: *{session.duration_minutes} мин*"
     await call.message.answer(confirm, parse_mode="Markdown")
 
 

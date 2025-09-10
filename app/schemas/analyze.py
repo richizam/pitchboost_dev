@@ -9,7 +9,7 @@ DurationMinutes = Literal[1, 3, 5]
 class AnalyzeRequest(BaseModel):
     user_id: str
     scenario: Scenario = "recommendation"
-    duration_minutes: DurationMinutes = 1
+    duration_minutes: Optional[DurationMinutes] = None
     audio_url: AnyHttpUrl
     media_duration_sec: Optional[int] = Field(default=None, ge=0)
 

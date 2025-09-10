@@ -21,7 +21,6 @@ def analyze(client):
         json={
             "user_id": "u1",
             "scenario": "recommendation",
-            "duration_minutes": 1,
             "audio_url": "http://example.com/a.ogg",
             "media_duration_sec": 10,
         },

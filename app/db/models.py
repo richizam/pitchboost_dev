@@ -1,5 +1,6 @@
 # app/db/models.py
 from datetime import datetime, timezone
+from typing import Optional
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy import Integer, String, ForeignKey, DateTime
 
@@ -28,7 +29,7 @@ class Pitch(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     audio_key: Mapped[str] = mapped_column(String, nullable=False)
     scenario: Mapped[str] = mapped_column(String)
-    duration_minutes: Mapped[int] = mapped_column(Integer)
+    duration_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
