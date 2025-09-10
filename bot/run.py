@@ -4,7 +4,7 @@ import json
 import os
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Optional
 
 import httpx
@@ -25,12 +25,11 @@ KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "ai-gateway-bot")
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-
 # ---------- UI helpers ----------
 SCENARIO_LABELS = {
-    "investor": "Инвестор",
-    "client": "Клиент",
-    "academic": "Академический",
+    "investor": "💼 Инвестор",
+    "client": "🤝 Клиент",
+    "academic": "🎓 Академический",
 }
 SCENARIO_ORDER = ["investor", "client", "academic"]
 DURATION_ORDER = [1, 3, 5]  # минуты
@@ -53,7 +52,7 @@ class UserSession:
 sessions: Dict[int, UserSession] = {}
 
 
-def build_menu(session: UserSession) -> "InlineKeyboardMarkup":
+def build_menu(session: UserSession):
     """
     Teclado con selección de escenario + duración + acciones.
     Marca la opción elegida con '✅'.
@@ -61,22 +60,15 @@ def build_menu(session: UserSession) -> "InlineKeyboardMarkup":
     kb = InlineKeyboardBuilder()
 
     # Escenarios (fila 1)
-    row = []
     for sc in SCENARIO_ORDER:
         label = SCENARIO_LABELS[sc]
-        if sc == session.scenario:
-            text = f"✅ {label}"
-        else:
-            text = label
+        text = f"✅ {label}" if sc == session.scenario else label
         kb.button(text=text, callback_data=f"sc:{sc}")
     kb.adjust(3)
 
     # Duraciones (fila 2)
     for dur in DURATION_ORDER:
-        if dur == session.duration_minutes:
-            text = f"✅ {dur} мин"
-        else:
-            text = f"{dur} мин"
+        text = f"✅ ⏱️ {dur} мин" if dur == session.duration_minutes else f"⏱️ {dur} мин"
         kb.button(text=text, callback_data=f"du:{dur}")
     kb.adjust(3, 3)
 
@@ -98,32 +90,13 @@ def menu_text(session: UserSession) -> str:
     )
 
 
-# ---------- Handlers ----------
-@dp.message(F.text == "/start")
-async def cmd_start(msg: Message):
-    text = (
-        "👋 Добро пожаловать в *PitchBoost Bot*!\n\n"
-        "Отправьте мне голосовое сообщение 🎙️ со своим питчем.\n\n"
-        "После этого вы сможете выбрать:\n"
-        "• *Сценарий*: 💼 Инвестор | 🤝 Клиент | 🎓 Академический\n"
-        "• *Длительность*: ⏱️ 1, 3 или 5 минут\n\n"
-        "Я дам вам обратную связь 💡: сильные стороны, зоны роста и улучшенную версию питча."
-    )
-    await msg.answer(text, parse_mode="Markdown")
-
-@dp.message(F.voice)
-async def handle_voice(msg: Message):
+async def start_selection_flow(chat_id: int, user_id: int, file_path: str, is_voice: bool):
     """
-    1) Получаем file_path от Telegram → собираем прямой file URL.
-    2) Запоминаем URL в сессии пользователя.
-    3) Показываем меню выбора сценария и длительности.
+    1) Формируем прямой URL файла Telegram.
+    2) Сохраняем в сессию.
+    3) Показываем меню выбора.
     """
-    user_id = msg.from_user.id
-
-    # Получить прямой URL на файл
-    file_id = msg.voice.file_id
-    f = await bot.get_file(file_id)
-    url = tg_file_url(BOT_TOKEN, f.file_path)
+    url = tg_file_url(BOT_TOKEN, file_path)
 
     # Обновить / создать сессию
     session = sessions.get(user_id) or UserSession()
@@ -131,22 +104,56 @@ async def handle_voice(msg: Message):
     sessions[user_id] = session
 
     try:
-        await bot.send_chat_action(user_id, "typing")
+        await bot.send_chat_action(chat_id, "typing")
     except Exception:
         pass
 
-    text = (
+    intro = (
         "💡 *Шаг 1/2*. Я получил голосовое сообщение.\n"
+        if is_voice else
+        "💡 *Шаг 1/2*. Я получил аудиофайл.\n"
+    )
+    intro += (
         "Теперь выберите *сценарий* и *длительность* для анализа.\n"
         "После этого я отправлю запрос и пришлю итог, как только он будет готов."
     )
+    await bot.send_message(chat_id, intro, parse_mode="Markdown")
+
+    menu_msg = await bot.send_message(chat_id, menu_text(session), parse_mode="Markdown", reply_markup=build_menu(session))
+    session.menu_message_id = menu_msg.message_id
+    session.menu_chat_id = chat_id
+    sessions[user_id] = session
+
+
+# ---------- Handlers ----------
+@dp.message(F.text == "/start")
+async def cmd_start(msg: Message):
+    text = (
+        "👋 Добро пожаловать в *PitchBoost Bot*!\n\n"
+        "Отправьте мне *голосовое сообщение* 🎙️ или *аудиофайл* 🎵 со своим питчем.\n\n"
+        "После этого вы сможете выбрать:\n"
+        "• *Сценарий*: 💼 Инвестор | 🤝 Клиент | 🎓 Академический\n"
+        "• *Длительность*: ⏱️ 1, 3 или 5 минут\n\n"
+        "Я дам вам обратную связь 💡: сильные стороны, зоны роста и улучшенную версию питча."
+    )
     await msg.answer(text, parse_mode="Markdown")
 
-    # Mostrar/actualizar menú principal
-    menu_msg = await msg.answer(menu_text(session), parse_mode="Markdown", reply_markup=build_menu(session))
-    session.menu_message_id = menu_msg.message_id
-    session.menu_chat_id = msg.chat.id
-    sessions[user_id] = session
+
+@dp.message(F.voice)
+async def handle_voice(msg: Message):
+    user_id = msg.from_user.id
+    f = await bot.get_file(msg.voice.file_id)
+    await start_selection_flow(chat_id=msg.chat.id, user_id=user_id, file_path=f.file_path, is_voice=True)
+
+
+@dp.message(F.audio)
+async def handle_audio(msg: Message):
+    """
+    Acepta audios enviados como archivo (mp3/ogg/wav) — Telegram los marca como 'audio', no 'voice'.
+    """
+    user_id = msg.from_user.id
+    f = await bot.get_file(msg.audio.file_id)
+    await start_selection_flow(chat_id=msg.chat.id, user_id=user_id, file_path=f.file_path, is_voice=False)
 
 
 @dp.callback_query(F.data.startswith("sc:"))
@@ -156,11 +163,9 @@ async def set_scenario(call: CallbackQuery):
     session.scenario = call.data.split(":", 1)[1]
     sessions[user_id] = session
     await call.answer(f"Сценарий: {SCENARIO_LABELS[session.scenario]}")
-    # Actualizar interfaz
     try:
         await call.message.edit_text(menu_text(session), parse_mode="Markdown", reply_markup=build_menu(session))
     except Exception:
-        # Algunos clientes no permiten editar texto demasiado a menudo — actualizamos sólo клавиатуру
         await call.message.edit_reply_markup(build_menu(session))
 
 
@@ -174,7 +179,6 @@ async def set_duration(call: CallbackQuery):
         session.duration_minutes = 1
     sessions[user_id] = session
     await call.answer(f"Длительность: {session.duration_minutes} мин")
-    # Actualizar interfaz
     try:
         await call.message.edit_text(menu_text(session), parse_mode="Markdown", reply_markup=build_menu(session))
     except Exception:
@@ -187,7 +191,7 @@ async def reset_session(call: CallbackQuery):
     sessions[user_id] = UserSession()
     await call.answer("Сброшено.")
     await call.message.edit_text(
-        "Сессия сброшена. Отправьте новое голосовое сообщение 🎙️",
+        "Сессия сброшена. Отправьте новое голосовое сообщение 🎙️ или аудиофайл 🎵",
         parse_mode="Markdown",
     )
 
@@ -202,7 +206,7 @@ async def run_analysis(call: CallbackQuery):
     user_id = call.from_user.id
     session = sessions.get(user_id)
     if not session or not session.audio_url:
-        await call.answer("Сначала отправьте голосовое сообщение.", show_alert=True)
+        await call.answer("Сначала отправьте голосовое сообщение или аудиофайл.", show_alert=True)
         return
 
     payload = {
@@ -223,7 +227,6 @@ async def run_analysis(call: CallbackQuery):
         await call.message.answer(f"Ошибка анализа: {e}")
         return
 
-    # UX: подтвердить и напомнить что ответ придёт позже (через Kafka)
     await call.message.answer(
         "✅ Запрос принят! Я пришлю результат, как только он будет готов.\n\n"
         f"• Сценарий: *{SCENARIO_LABELS.get(session.scenario, '—')}*\n"
