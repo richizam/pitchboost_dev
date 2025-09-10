@@ -30,8 +30,14 @@ def analyze(client):
 
 def test_credits_gate(client, monkeypatch):
     setup_mocks(monkeypatch)
+    # 5 free attempts should work
+    for _ in range(5):
+        resp = analyze(client)
+        assert resp.status_code == 202
+    # 6th attempt fails
     resp = analyze(client)
     assert resp.status_code == 402
+    # buying adds more attempts
     buy = client.post("/v1/buy", json={"telegram_id": "u1"})
     assert buy.status_code == 200
     resp = analyze(client)

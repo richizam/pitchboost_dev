@@ -16,13 +16,12 @@ from confluent_kafka import Consumer, KafkaException, KafkaError
 # --- ENV ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
-PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", API_BASE_URL)
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC_OUT = os.getenv("KAFKA_TOPIC_OUT", "aith.messages.result")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "ai-gateway-bot")
 
-AUDIO_MAX_SECONDS = int(os.getenv("AUDIO_MAX_SECONDS", "300"))
+AUDIO_MAX_SECONDS = int(os.getenv("AUDIO_MAX_SECONDS", "420"))
 
 # --- Telegram ---
 bot = Bot(token=BOT_TOKEN)
@@ -127,7 +126,7 @@ async def handle_voice(msg: Message):
     duration = msg.voice.duration
     if duration and duration > AUDIO_MAX_SECONDS:
         await msg.answer(
-            "⚠️ Аудио дольше 5 минут. Пожалуйста, отправьте запись короче (до 5 минут)."
+            "⚠️ Аудио дольше 7 минут. Пожалуйста, отправьте запись короче (до 7 минут)."
         )
         return
 
@@ -170,7 +169,7 @@ async def handle_audio(msg: Message):
     duration = msg.audio.duration
     if duration and duration > AUDIO_MAX_SECONDS:
         await msg.answer(
-            "⚠️ Аудио дольше 5 минут. Пожалуйста, отправьте запись короче (до 5 минут)."
+            "⚠️ Аудио дольше 7 минут. Пожалуйста, отправьте запись короче (до 7 минут)."
         )
         return
 
@@ -299,14 +298,29 @@ async def run_analysis(call: CallbackQuery):
 # ---- payments ----
 @dp.message(F.text == "/buy")
 async def cmd_buy(msg: Message):
-    user_id = msg.from_user.id
-    checkout_url = f"{PUBLIC_API_URL}/static/fake_checkout.html?telegram_id={user_id}"
     kb = InlineKeyboardBuilder()
-    kb.button(text="Оплатить 700 ₽", url=checkout_url)
+    kb.button(text="Buy 20 attempts for 700 RUB", callback_data="buy:20")
     await msg.answer(
-        "Чтобы купить 20 попыток за 700 ₽, нажмите кнопку ниже:",
-        reply_markup=kb.as_markup(),
+        "Чтобы купить попытки, нажмите кнопку ниже:", reply_markup=kb.as_markup()
     )
+
+
+@dp.callback_query(F.data == "buy:20")
+async def process_buy(call: CallbackQuery):
+    user_id = call.from_user.id
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post(
+                f"{API_BASE_URL}/v1/buy", json={"telegram_id": str(user_id)}
+            )
+            r.raise_for_status()
+            new_attempts = r.json().get("new_attempts", 0)
+    except Exception as e:
+        await call.message.answer(f"Ошибка оплаты: {e}")
+        await call.answer()
+        return
+    await call.answer("Оплачено")
+    await call.message.answer(f"Оплачено. Попыток: {new_attempts}")
 
 
 @dp.message(F.text == "/balance")

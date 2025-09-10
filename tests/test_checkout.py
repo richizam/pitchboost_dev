@@ -11,11 +11,11 @@ def test_buy_adds_attempts_and_payment(client):
     assert r.status_code == 200
     data = r.json()
     assert data["telegram_id"] == tg_id
-    assert data["new_attempts"] == 20
+    assert data["new_attempts"] == 25
 
     r = client.get(f"/v1/balance/{tg_id}")
     data = r.json()
-    assert data["attempts"] == 20
+    assert data["attempts"] == 25
 
     override = client.app.dependency_overrides[get_db]
     db = next(override())

@@ -2,6 +2,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.db import models
+from app.core.config import settings
 
 
 def get_or_create_user(db: Session, tg_user_id: str) -> models.User:
@@ -9,7 +10,7 @@ def get_or_create_user(db: Session, tg_user_id: str) -> models.User:
     user = db.execute(stmt).scalar_one_or_none()
     if user:
         return user
-    user = models.User(tg_user_id=tg_user_id)
+    user = models.User(tg_user_id=tg_user_id, attempts=settings.FREE_CREDITS)
     db.add(user)
     db.commit()
     db.refresh(user)
