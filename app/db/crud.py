@@ -58,7 +58,7 @@ def create_pitch(
     user_id: int,
     audio_key: str,
     scenario: str,
-    duration_minutes: int,
+    duration_minutes: int | None,
     status: str,
 ) -> models.Pitch:
     pitch = models.Pitch(
