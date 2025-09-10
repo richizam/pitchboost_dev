@@ -1,5 +1,6 @@
-#exceptions.py
+# app/core/exceptions.py
 from fastapi import HTTPException, status
+
 
 class BadAudioException(HTTPException):
     def __init__(self, detail="Invalid audio"):

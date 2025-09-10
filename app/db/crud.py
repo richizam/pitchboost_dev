@@ -1,3 +1,4 @@
+# app/db/crud.py
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.db import models
@@ -37,6 +38,23 @@ def add_paid_credits(db: Session, user: models.User, amount: int) -> None:
     user.credits_paid += amount
     db.add(user)
     db.commit()
+
+
+def create_payment(
+    db: Session,
+    *,
+    tg_user_id: str,
+    amount: int,
+    credits: int,
+    status: str,
+) -> models.Payment:
+    payment = models.Payment(
+        tg_user_id=tg_user_id, amount=amount, credits=credits, status=status
+    )
+    db.add(payment)
+    db.commit()
+    db.refresh(payment)
+    return payment
 
 
 def create_pitch(

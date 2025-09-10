@@ -317,6 +317,22 @@ async def cmd_buy(msg: Message):
     )
 
 
+@dp.message(F.text == "/balance")
+async def cmd_balance(msg: Message):
+    user_id = msg.from_user.id
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.get(f"{API_BASE_URL}/v1/credits/{user_id}")
+            data = r.json()
+    except Exception:
+        await msg.answer("Ошибка запроса баланса")
+        return
+
+    await msg.answer(
+        f"Баланс: {data.get('total_remaining', 0)} (платные: {data.get('paid', 0)})"
+    )
+
+
 # ---------- Kafka consumer (result) ----------
 def start_kafka_consumer(loop: asyncio.AbstractEventLoop):
     def _run():
