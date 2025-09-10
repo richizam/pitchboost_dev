@@ -1,10 +1,11 @@
-#kafka_client
-
+# kafka_client
+# app/services/kafka_client.py
 import json
 import uuid
-from typing import Dict, Any
+from typing import Any, Dict
 
 from confluent_kafka import Producer
+
 from app.core.config import settings
 from app.core.logging import logger
 
@@ -13,7 +14,9 @@ def _delivery_report(err, msg):
     if err is not None:
         logger.error(f"Kafka delivery failed: {err}")
     else:
-        logger.info(f"Kafka delivered to {msg.topic()} [{msg.partition()}] offset={msg.offset()}")
+        logger.info(
+            f"Kafka delivered to {msg.topic()} [{msg.partition()}] offset={msg.offset()}"
+        )
 
 
 class KafkaGatewayProducer:

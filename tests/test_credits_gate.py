@@ -1,4 +1,4 @@
-from app.core.config import settings
+# tests/test_credits_gate.py
 import app.services.storage as storage
 from app.services.kafka_client import kafka_producer
 
@@ -30,12 +30,15 @@ def analyze(client):
 
 def test_credits_gate(client, monkeypatch):
     setup_mocks(monkeypatch)
-    for _ in range(settings.FREE_CREDITS):
+    # 5 free attempts should work
+    for _ in range(5):
         resp = analyze(client)
         assert resp.status_code == 202
+    # 6th attempt fails
     resp = analyze(client)
     assert resp.status_code == 402
-    pay = client.post("/v1/pay", json={"tg_user_id": "u1", "amount": 2})
-    assert pay.status_code == 200
+    # buying adds more attempts
+    buy = client.post("/v1/buy", json={"telegram_id": "u1"})
+    assert buy.status_code == 200
     resp = analyze(client)
     assert resp.status_code == 202

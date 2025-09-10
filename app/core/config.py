@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     FREE_CREDITS: int = 5
 
     # Audio validation
-    AUDIO_MAX_SECONDS: int = 300
+    AUDIO_MAX_SECONDS: int = 420
     AUDIO_MAX_CONTENT_LENGTH: int = 50 * 1024 * 1024  # 50 MB
 
     class Config:

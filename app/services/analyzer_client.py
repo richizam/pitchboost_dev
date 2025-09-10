@@ -1,8 +1,11 @@
-# analyzer_client.py
+# app/services/analyzer_client.py
 from app.schemas.analyze import AnalyzeResponse, Scores
 
+
 class AnalyzerClient:
-    async def analyze(self, *, user_id: str, scenario: str, audio_url: str) -> AnalyzeResponse:
+    async def analyze(
+        self, *, user_id: str, scenario: str, audio_url: str
+    ) -> AnalyzeResponse:
         # Mock para CP1. Despues Reemplazo por httpx a AI Platform real en CP2.
         scores = Scores(clarity=80, structure=72, persuasion=76, total=76)
         return AnalyzeResponse(
@@ -14,5 +17,6 @@ class AnalyzerClient:
                 "Наше решение даёт ... Призыв к действию: ..."
             ),
         )
+
 
 analyzer_client = AnalyzerClient()

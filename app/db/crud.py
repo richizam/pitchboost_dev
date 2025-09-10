@@ -1,6 +1,8 @@
+# app/db/crud.py
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.db import models
+from app.core.config import settings
 
 
 def get_or_create_user(db: Session, tg_user_id: str) -> models.User:
@@ -8,7 +10,7 @@ def get_or_create_user(db: Session, tg_user_id: str) -> models.User:
     user = db.execute(stmt).scalar_one_or_none()
     if user:
         return user
-    user = models.User(tg_user_id=tg_user_id)
+    user = models.User(tg_user_id=tg_user_id, attempts=settings.FREE_CREDITS)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -20,23 +22,34 @@ def get_user_by_tg_id(db: Session, tg_user_id: str) -> models.User | None:
     return db.execute(stmt).scalar_one_or_none()
 
 
-def increment_free_used(db: Session, user: models.User) -> None:
-    user.credits_free_used += 1
-    db.add(user)
-    db.commit()
-
-
-def decrement_paid_credit(db: Session, user: models.User) -> None:
-    if user.credits_paid > 0:
-        user.credits_paid -= 1
+def use_attempt(db: Session, user: models.User) -> None:
+    if user.attempts > 0:
+        user.attempts -= 1
         db.add(user)
         db.commit()
 
 
-def add_paid_credits(db: Session, user: models.User, amount: int) -> None:
-    user.credits_paid += amount
+def add_attempts(db: Session, user: models.User, amount: int) -> None:
+    user.attempts += amount
     db.add(user)
     db.commit()
+
+
+def create_payment(
+    db: Session,
+    *,
+    tg_user_id: str,
+    amount: int,
+    credits: int,
+    status: str,
+) -> models.Payment:
+    payment = models.Payment(
+        tg_user_id=tg_user_id, amount=amount, credits=credits, status=status
+    )
+    db.add(payment)
+    db.commit()
+    db.refresh(payment)
+    return payment
 
 
 def create_pitch(

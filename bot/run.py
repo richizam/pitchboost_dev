@@ -21,7 +21,7 @@ KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC_OUT = os.getenv("KAFKA_TOPIC_OUT", "aith.messages.result")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "ai-gateway-bot")
 
-AUDIO_MAX_SECONDS = int(os.getenv("AUDIO_MAX_SECONDS", "300"))
+AUDIO_MAX_SECONDS = int(os.getenv("AUDIO_MAX_SECONDS", "420"))
 
 # --- Telegram ---
 bot = Bot(token=BOT_TOKEN)
@@ -126,7 +126,7 @@ async def handle_voice(msg: Message):
     duration = msg.voice.duration
     if duration and duration > AUDIO_MAX_SECONDS:
         await msg.answer(
-            "⚠️ Аудио дольше 5 минут. Пожалуйста, отправьте запись короче (до 5 минут)."
+            "⚠️ Аудио дольше 7 минут. Пожалуйста, отправьте запись короче (до 7 минут)."
         )
         return
 
@@ -169,7 +169,7 @@ async def handle_audio(msg: Message):
     duration = msg.audio.duration
     if duration and duration > AUDIO_MAX_SECONDS:
         await msg.answer(
-            "⚠️ Аудио дольше 5 минут. Пожалуйста, отправьте запись короче (до 5 минут)."
+            "⚠️ Аудио дольше 7 минут. Пожалуйста, отправьте запись короче (до 7 минут)."
         )
         return
 
@@ -276,8 +276,7 @@ async def run_analysis(call: CallbackQuery):
             r = await client.post(f"{API_BASE_URL}/v1/analyze", json=payload)
             if r.status_code == 402:
                 await call.message.answer(
-                    "💳 Кредиты закончились. Доступно 5 бесплатных анализов. "
-                    "Пополнить можно командой /buy (мок)."
+                    "💳 Кредиты закончились. Пополнить можно командой /buy.",
                 )
                 return
             if r.status_code >= 300:
@@ -299,22 +298,42 @@ async def run_analysis(call: CallbackQuery):
 # ---- payments ----
 @dp.message(F.text == "/buy")
 async def cmd_buy(msg: Message):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Buy 20 attempts for 700 RUB", callback_data="buy:20")
+    await msg.answer(
+        "Чтобы купить попытки, нажмите кнопку ниже:", reply_markup=kb.as_markup()
+    )
+
+
+@dp.callback_query(F.data == "buy:20")
+async def process_buy(call: CallbackQuery):
+    user_id = call.from_user.id
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post(
+                f"{API_BASE_URL}/v1/buy", json={"telegram_id": str(user_id)}
+            )
+            r.raise_for_status()
+            new_attempts = r.json().get("new_attempts", 0)
+    except Exception as e:
+        await call.message.answer(f"Ошибка оплаты: {e}")
+        await call.answer()
+        return
+    await call.answer("Оплачено")
+    await call.message.answer(f"Оплачено. Попыток: {new_attempts}")
+
+
+@dp.message(F.text == "/balance")
+async def cmd_balance(msg: Message):
     user_id = msg.from_user.id
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            await client.post(
-                f"{API_BASE_URL}/v1/pay", json={"tg_user_id": str(user_id), "amount": 5}
-            )
-            r = await client.get(f"{API_BASE_URL}/v1/credits/{user_id}")
+            r = await client.get(f"{API_BASE_URL}/v1/balance/{user_id}")
             data = r.json()
     except Exception:
-        await msg.answer("Ошибка платежа")
+        await msg.answer("Ошибка запроса баланса")
         return
-
-    await msg.answer(
-        "Пополнено. Баланс: "
-        f"{data.get('total_remaining', 0)} (платные: {data.get('paid', 0)})"
-    )
+    await msg.answer(f"Попыток осталось: {data.get('attempts', 0)}")
 
 
 # ---------- Kafka consumer (result) ----------
