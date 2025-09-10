@@ -4,7 +4,7 @@ import json
 import os
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Optional
 
 import httpx
@@ -20,6 +20,8 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC_OUT = os.getenv("KAFKA_TOPIC_OUT", "aith.messages.result")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "ai-gateway-bot")
+
+AUDIO_MAX_SECONDS = int(os.getenv("AUDIO_MAX_SECONDS", "300"))
 
 # --- Telegram ---
 bot = Bot(token=BOT_TOKEN)
@@ -47,6 +49,7 @@ class UserSession:
     duration_minutes: int = 1
     menu_message_id: Optional[int] = None
     menu_chat_id: Optional[int] = None
+    media_duration_sec: Optional[int] = None
 
 
 # Estado simple en memoria para el hackatón
@@ -111,6 +114,7 @@ async def cmd_start(msg: Message):
     )
     await msg.answer(text, parse_mode="Markdown")
 
+
 @dp.message(F.voice)
 async def handle_voice(msg: Message):
     """
@@ -119,6 +123,12 @@ async def handle_voice(msg: Message):
     3) Показываем меню выбора сценария и длительности.
     """
     user_id = msg.from_user.id
+    duration = msg.voice.duration
+    if duration and duration > AUDIO_MAX_SECONDS:
+        await msg.answer(
+            "⚠️ Аудио дольше 5 минут. Пожалуйста, отправьте запись короче (до 5 минут)."
+        )
+        return
 
     # Получить прямой URL на файл
     file_id = msg.voice.file_id
@@ -128,6 +138,7 @@ async def handle_voice(msg: Message):
     # Обновить / создать сессию
     session = sessions.get(user_id) or UserSession()
     session.audio_url = url
+    session.media_duration_sec = duration
     sessions[user_id] = session
 
     try:
@@ -143,7 +154,49 @@ async def handle_voice(msg: Message):
     await msg.answer(text, parse_mode="Markdown")
 
     # Mostrar/actualizar menú principal
-    menu_msg = await msg.answer(menu_text(session), parse_mode="Markdown", reply_markup=build_menu(session))
+    menu_msg = await msg.answer(
+        menu_text(session), parse_mode="Markdown", reply_markup=build_menu(session)
+    )
+    session.menu_message_id = menu_msg.message_id
+    session.menu_chat_id = msg.chat.id
+    sessions[user_id] = session
+
+
+@dp.message(F.audio)
+async def handle_audio(msg: Message):
+    """Handle regular audio files."""
+    user_id = msg.from_user.id
+    duration = msg.audio.duration
+    if duration and duration > AUDIO_MAX_SECONDS:
+        await msg.answer(
+            "⚠️ Аудио дольше 5 минут. Пожалуйста, отправьте запись короче (до 5 минут)."
+        )
+        return
+
+    file_id = msg.audio.file_id
+    f = await bot.get_file(file_id)
+    url = tg_file_url(BOT_TOKEN, f.file_path)
+
+    session = sessions.get(user_id) or UserSession()
+    session.audio_url = url
+    session.media_duration_sec = duration
+    sessions[user_id] = session
+
+    try:
+        await bot.send_chat_action(user_id, "typing")
+    except Exception:
+        pass
+
+    text = (
+        "💡 *Шаг 1/2*. Я получил аудиофайл.\n"
+        "Теперь выберите *сценарий* и *длительность* для анализа.\n"
+        "После этого я отправлю запрос и пришлю итог, как только он будет готов."
+    )
+    await msg.answer(text, parse_mode="Markdown")
+
+    menu_msg = await msg.answer(
+        menu_text(session), parse_mode="Markdown", reply_markup=build_menu(session)
+    )
     session.menu_message_id = menu_msg.message_id
     session.menu_chat_id = msg.chat.id
     sessions[user_id] = session
@@ -158,7 +211,9 @@ async def set_scenario(call: CallbackQuery):
     await call.answer(f"Сценарий: {SCENARIO_LABELS[session.scenario]}")
     # Actualizar interfaz
     try:
-        await call.message.edit_text(menu_text(session), parse_mode="Markdown", reply_markup=build_menu(session))
+        await call.message.edit_text(
+            menu_text(session), parse_mode="Markdown", reply_markup=build_menu(session)
+        )
     except Exception:
         # Algunos clientes no permiten editar texto demasiado a menudo — actualizamos sólo клавиатуру
         await call.message.edit_reply_markup(build_menu(session))
@@ -176,7 +231,9 @@ async def set_duration(call: CallbackQuery):
     await call.answer(f"Длительность: {session.duration_minutes} мин")
     # Actualizar interfaz
     try:
-        await call.message.edit_text(menu_text(session), parse_mode="Markdown", reply_markup=build_menu(session))
+        await call.message.edit_text(
+            menu_text(session), parse_mode="Markdown", reply_markup=build_menu(session)
+        )
     except Exception:
         await call.message.edit_reply_markup(build_menu(session))
 
@@ -210,12 +267,19 @@ async def run_analysis(call: CallbackQuery):
         "scenario": session.scenario,
         "duration_minutes": session.duration_minutes,
         "audio_url": session.audio_url,
+        "media_duration_sec": session.media_duration_sec,
     }
 
     try:
         await call.answer("Отправляю…")
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.post(f"{API_BASE_URL}/v1/analyze", json=payload)
+            if r.status_code == 402:
+                await call.message.answer(
+                    "💳 Кредиты закончились. Доступно 5 бесплатных анализов. "
+                    "Пополнить можно командой /buy (мок)."
+                )
+                return
             if r.status_code >= 300:
                 await call.message.answer(f"Ошибка API: {r.status_code}")
                 return
@@ -229,6 +293,27 @@ async def run_analysis(call: CallbackQuery):
         f"• Сценарий: *{SCENARIO_LABELS.get(session.scenario, '—')}*\n"
         f"• Длительность: *{session.duration_minutes} мин*",
         parse_mode="Markdown",
+    )
+
+
+# ---- payments ----
+@dp.message(F.text == "/buy")
+async def cmd_buy(msg: Message):
+    user_id = msg.from_user.id
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            await client.post(
+                f"{API_BASE_URL}/v1/pay", json={"tg_user_id": str(user_id), "amount": 5}
+            )
+            r = await client.get(f"{API_BASE_URL}/v1/credits/{user_id}")
+            data = r.json()
+    except Exception:
+        await msg.answer("Ошибка платежа")
+        return
+
+    await msg.answer(
+        "Пополнено. Баланс: "
+        f"{data.get('total_remaining', 0)} (платные: {data.get('paid', 0)})"
     )
 
 
