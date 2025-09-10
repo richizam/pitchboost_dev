@@ -38,13 +38,11 @@ async def analyze(
             detail=f"Audio too long (>{settings.AUDIO_MAX_SECONDS}s)",
         )
 
-    # Credits gating
-    if user.credits_free_used < settings.FREE_CREDITS:
-        crud.increment_free_used(db, user)
-    elif user.credits_paid > 0:
-        crud.decrement_paid_credit(db, user)
+    # Attempts gating
+    if user.attempts > 0:
+        crud.use_attempt(db, user)
     else:
-        raise HTTPException(status_code=402, detail="No credits remaining")
+        raise HTTPException(status_code=402, detail="No attempts remaining")
 
     audio_url_str = str(req.audio_url)
 

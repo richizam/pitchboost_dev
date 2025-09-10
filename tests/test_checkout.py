@@ -5,14 +5,17 @@ from app.db import models
 from app.db.database import get_db
 
 
-def test_checkout_adds_credits_and_payment(client):
+def test_buy_adds_attempts_and_payment(client):
     tg_id = "42"
-    r = client.post("/v1/checkout", json={"tg_user_id": tg_id})
+    r = client.post("/v1/buy", json={"telegram_id": tg_id})
     assert r.status_code == 200
-
-    r = client.get(f"/v1/credits/{tg_id}")
     data = r.json()
-    assert data["paid"] == 20
+    assert data["telegram_id"] == tg_id
+    assert data["new_attempts"] == 20
+
+    r = client.get(f"/v1/balance/{tg_id}")
+    data = r.json()
+    assert data["attempts"] == 20
 
     override = client.app.dependency_overrides[get_db]
     db = next(override())

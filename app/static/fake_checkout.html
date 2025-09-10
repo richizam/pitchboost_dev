@@ -1,0 +1,64 @@
+<!-- app/static/fake_checkout.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PitchBoost Checkout</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f5f5f5;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .card {
+      background: #fff;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      text-align: center;
+      max-width: 320px;
+      width: 100%;
+    }
+    button {
+      background: #4CAF50;
+      color: #fff;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 4px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button:disabled {
+      background: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>PitchBoost</h1>
+    <p>Buy 20 attempts for 700 ₽</p>
+    <button id="pay">Pay</button>
+    <p id="status"></p>
+  </div>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const telegramId = params.get('telegram_id');
+    document.getElementById('pay').addEventListener('click', async () => {
+      const res = await fetch('/v1/buy', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({telegram_id: telegramId})
+      });
+      if (res.ok) {
+        document.getElementById('status').textContent = 'Оплачено';
+        document.getElementById('pay').disabled = true;
+      }
+    });
+  </script>
+</body>
+</html>

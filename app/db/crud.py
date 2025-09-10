@@ -21,21 +21,15 @@ def get_user_by_tg_id(db: Session, tg_user_id: str) -> models.User | None:
     return db.execute(stmt).scalar_one_or_none()
 
 
-def increment_free_used(db: Session, user: models.User) -> None:
-    user.credits_free_used += 1
-    db.add(user)
-    db.commit()
-
-
-def decrement_paid_credit(db: Session, user: models.User) -> None:
-    if user.credits_paid > 0:
-        user.credits_paid -= 1
+def use_attempt(db: Session, user: models.User) -> None:
+    if user.attempts > 0:
+        user.attempts -= 1
         db.add(user)
         db.commit()
 
 
-def add_paid_credits(db: Session, user: models.User, amount: int) -> None:
-    user.credits_paid += amount
+def add_attempts(db: Session, user: models.User, amount: int) -> None:
+    user.attempts += amount
     db.add(user)
     db.commit()
 

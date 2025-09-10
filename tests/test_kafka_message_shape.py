@@ -18,6 +18,7 @@ def test_kafka_payload_shape(client, monkeypatch):
     monkeypatch.setattr(kafka_producer, "enqueue_for_processing", fake_enqueue)
     monkeypatch.setattr(kafka_producer, "flush", lambda: None)
 
+    client.post("/v1/buy", json={"telegram_id": "u1"})
     resp = client.post(
         "/v1/analyze",
         json={

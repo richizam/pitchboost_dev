@@ -17,6 +17,7 @@ def setup_mocks(monkeypatch):
 
 def test_duration_gate(client, monkeypatch):
     setup_mocks(monkeypatch)
+    client.post("/v1/buy", json={"telegram_id": "u1"})
     resp = client.post(
         "/v1/analyze",
         json={

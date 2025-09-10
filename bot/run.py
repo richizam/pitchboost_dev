@@ -300,9 +300,12 @@ async def run_analysis(call: CallbackQuery):
 @dp.message(F.text == "/buy")
 async def cmd_buy(msg: Message):
     user_id = msg.from_user.id
-    checkout_url = f"{API_BASE_URL}/v1/checkout?tg_user_id={user_id}"
+    checkout_url = f"{API_BASE_URL}/static/fake_checkout.html?telegram_id={user_id}"
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Оплатить 700 ₽", url=checkout_url)
     await msg.answer(
-        "Чтобы купить 20 попыток за 700 ₽, перейдите по ссылке:\n" + checkout_url
+        "Чтобы купить 20 попыток за 700 ₽, нажмите кнопку ниже:",
+        reply_markup=kb.as_markup(),
     )
 
 
@@ -311,15 +314,12 @@ async def cmd_balance(msg: Message):
     user_id = msg.from_user.id
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.get(f"{API_BASE_URL}/v1/credits/{user_id}")
+            r = await client.get(f"{API_BASE_URL}/v1/balance/{user_id}")
             data = r.json()
     except Exception:
         await msg.answer("Ошибка запроса баланса")
         return
-
-    await msg.answer(
-        f"Баланс: {data.get('total_remaining', 0)} (платные: {data.get('paid', 0)})"
-    )
+    await msg.answer(f"Попыток осталось: {data.get('attempts', 0)}")
 
 
 # ---------- Kafka consumer (result) ----------
