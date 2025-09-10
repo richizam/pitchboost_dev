@@ -30,11 +30,11 @@ dp = Dispatcher()
 
 # ---------- UI helpers ----------
 SCENARIO_LABELS = {
-    "investor": "Инвестор",
-    "client": "Клиент",
-    "academic": "Академический",
+    "recommendation": "Рекомендации",
+    "evaluation": "Оценка",
+    "adaptation": "Адаптация",
 }
-SCENARIO_ORDER = ["investor", "client", "academic"]
+SCENARIO_ORDER = ["recommendation", "evaluation", "adaptation"]
 DURATION_ORDER = [1, 3, 5]  # минуты
 
 
@@ -45,7 +45,7 @@ def tg_file_url(token: str, file_path: str) -> str:
 @dataclass
 class UserSession:
     audio_url: Optional[str] = None
-    scenario: str = "investor"
+    scenario: str = "recommendation"
     duration_minutes: int = 1
     menu_message_id: Optional[int] = None
     menu_chat_id: Optional[int] = None
@@ -57,48 +57,45 @@ sessions: Dict[int, UserSession] = {}
 
 
 def build_menu(session: UserSession) -> "InlineKeyboardMarkup":
-    """
-    Teclado con selección de escenario + duración + acciones.
-    Marca la opción elegida con '✅'.
-    """
+    """Construye клавиатуру с выбором сценария и, при необходимости, длительности."""
     kb = InlineKeyboardBuilder()
 
     # Escenarios (fila 1)
-    row = []
     for sc in SCENARIO_ORDER:
         label = SCENARIO_LABELS[sc]
-        if sc == session.scenario:
-            text = f"✅ {label}"
-        else:
-            text = label
+        text = f"✅ {label}" if sc == session.scenario else label
         kb.button(text=text, callback_data=f"sc:{sc}")
-    kb.adjust(3)
 
-    # Duraciones (fila 2)
-    for dur in DURATION_ORDER:
-        if dur == session.duration_minutes:
-            text = f"✅ {dur} мин"
-        else:
-            text = f"{dur} мин"
-        kb.button(text=text, callback_data=f"du:{dur}")
-    kb.adjust(3, 3)
+    # Duraciones (fila 2) — только для сценария адаптации
+    if session.scenario == "adaptation":
+        for dur in DURATION_ORDER:
+            text = f"✅ {dur} мин" if dur == session.duration_minutes else f"{dur} мин"
+            kb.button(text=text, callback_data=f"du:{dur}")
 
-    # Acciones (fila 3)
+    # Acciones (últняя fila)
     kb.button(text="🚀 Отправить на анализ", callback_data="go:analyze")
     kb.button(text="🔄 Сбросить", callback_data="go:reset")
-    kb.adjust(3, 3, 2)
+
+    if session.scenario == "adaptation":
+        kb.adjust(3, 3, 2)
+    else:
+        kb.adjust(3, 2)
 
     return kb.as_markup()
 
 
 def menu_text(session: UserSession) -> str:
-    return (
+    text = (
         "🎙️ *Анализ питча*\n\n"
-        "Выберите *сценарий* и *длительность* обзора.\n\n"
+        "Выберите *сценарий*. Для адаптации можно указать длительность.\n\n"
         f"• Сценарий: *{SCENARIO_LABELS.get(session.scenario, '—')}*\n"
-        f"• Длительность: *{session.duration_minutes} мин*\n\n"
-        "Когда всё готово — нажмите _«Отправить на анализ»_."
     )
+    if session.scenario == "adaptation":
+        text += f"• Длительность: *{session.duration_minutes} мин*\n\n"
+    else:
+        text += "\n"
+    text += "Когда всё готово — нажмите _«Отправить на анализ»_."
+    return text
 
 
 # ---------- Handlers ----------
@@ -108,8 +105,8 @@ async def cmd_start(msg: Message):
         "👋 Добро пожаловать в *PitchBoost Bot*!\n\n"
         "Отправьте мне голосовое сообщение 🎙️ со своим питчем.\n\n"
         "После этого вы сможете выбрать:\n"
-        "• *Сценарий*: 💼 Инвестор | 🤝 Клиент | 🎓 Академический\n"
-        "• *Длительность*: ⏱️ 1, 3 или 5 минут\n\n"
+        "• *Сценарий*: 💡 Рекомендации | 📝 Оценка | 🔧 Адаптация\n"
+        "• Для адаптации: длительность 1, 3 или 5 минут\n\n"
         "Я дам вам обратную связь 💡: сильные стороны, зоны роста и улучшенную версию питча."
     )
     await msg.answer(text, parse_mode="Markdown")
@@ -120,7 +117,7 @@ async def handle_voice(msg: Message):
     """
     1) Получаем file_path от Telegram → собираем прямой file URL.
     2) Запоминаем URL в сессии пользователя.
-    3) Показываем меню выбора сценария и длительности.
+    3) Показываем меню выбора сценария и длительности (для адаптации).
     """
     user_id = msg.from_user.id
     duration = msg.voice.duration
@@ -148,7 +145,7 @@ async def handle_voice(msg: Message):
 
     text = (
         "💡 *Шаг 1/2*. Я получил голосовое сообщение.\n"
-        "Теперь выберите *сценарий* и *длительность* для анализа.\n"
+        "Теперь выберите *сценарий*. Для адаптации можно указать длительность.\n"
         "После этого я отправлю запрос и пришлю итог, как только он будет готов."
     )
     await msg.answer(text, parse_mode="Markdown")
@@ -189,7 +186,7 @@ async def handle_audio(msg: Message):
 
     text = (
         "💡 *Шаг 1/2*. Я получил аудиофайл.\n"
-        "Теперь выберите *сценарий* и *длительность* для анализа.\n"
+        "Теперь выберите *сценарий*. Для адаптации можно указать длительность.\n"
         "После этого я отправлю запрос и пришлю итог, как только он будет готов."
     )
     await msg.answer(text, parse_mode="Markdown")
@@ -253,7 +250,7 @@ async def reset_session(call: CallbackQuery):
 async def run_analysis(call: CallbackQuery):
     """
     Когда пользователь нажимает «Отправить на анализ», шлём POST в API:
-    { user_id, scenario, duration_minutes, audio_url }.
+    { user_id, scenario, audio_url, [duration_minutes] }.
     Дальше результат придёт через Kafka → бот отправит ответ в чат.
     """
     user_id = call.from_user.id
@@ -265,10 +262,11 @@ async def run_analysis(call: CallbackQuery):
     payload = {
         "user_id": str(user_id),
         "scenario": session.scenario,
-        "duration_minutes": session.duration_minutes,
         "audio_url": session.audio_url,
         "media_duration_sec": session.media_duration_sec,
     }
+    if session.scenario == "adaptation":
+        payload["duration_minutes"] = session.duration_minutes
 
     try:
         await call.answer("Отправляю…")
@@ -287,12 +285,13 @@ async def run_analysis(call: CallbackQuery):
         return
 
     # UX: подтвердить и напомнить что ответ придёт позже (через Kafka)
-    await call.message.answer(
+    confirm = (
         "✅ Запрос принят! Я пришлю результат, как только он будет готов.\n\n"
         f"• Сценарий: *{SCENARIO_LABELS.get(session.scenario, '—')}*\n"
-        f"• Длительность: *{session.duration_minutes} мин*",
-        parse_mode="Markdown",
     )
+    if session.scenario == "adaptation":
+        confirm += f"• Длительность: *{session.duration_minutes} мин*"
+    await call.message.answer(confirm, parse_mode="Markdown")
 
 
 # ---- payments ----
