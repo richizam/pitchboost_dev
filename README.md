@@ -5,7 +5,7 @@
 ## Local stack
 
 1. `docker network create pitchboost-net` (если сети ещё нет).
-2. Скопировать `.env.example` → `.env` и указать `BOT_TOKEN` и ключи S3.
+2. Скопировать `.env.example` → `.env` и указать `BOT_TOKEN`, ключи S3 и `PUBLIC_API_URL` — публичный адрес API для ссылки оплаты.
 3. Запустить сервисы:
 
    ```bash

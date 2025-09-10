@@ -16,6 +16,7 @@ from confluent_kafka import Consumer, KafkaException, KafkaError
 # --- ENV ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", API_BASE_URL)
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC_OUT = os.getenv("KAFKA_TOPIC_OUT", "aith.messages.result")
@@ -276,8 +277,7 @@ async def run_analysis(call: CallbackQuery):
             r = await client.post(f"{API_BASE_URL}/v1/analyze", json=payload)
             if r.status_code == 402:
                 await call.message.answer(
-                    "💳 Кредиты закончились. Доступно 5 бесплатных анализов. "
-                    "Пополнить можно командой /buy (мок)."
+                    "💳 Кредиты закончились. Пополнить можно командой /buy.",
                 )
                 return
             if r.status_code >= 300:
@@ -300,7 +300,7 @@ async def run_analysis(call: CallbackQuery):
 @dp.message(F.text == "/buy")
 async def cmd_buy(msg: Message):
     user_id = msg.from_user.id
-    checkout_url = f"{API_BASE_URL}/static/fake_checkout.html?telegram_id={user_id}"
+    checkout_url = f"{PUBLIC_API_URL}/static/fake_checkout.html?telegram_id={user_id}"
     kb = InlineKeyboardBuilder()
     kb.button(text="Оплатить 700 ₽", url=checkout_url)
     await msg.answer(

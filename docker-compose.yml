@@ -1,4 +1,4 @@
-#docker-compose
+#docker-compose.yml
 networks:
   pitchboost-net:
     external: true
@@ -90,6 +90,7 @@ services:
     env_file: [.env]
     environment:
       API_BASE_URL: "http://api:8000"
+      PUBLIC_API_URL: "http://localhost:8000"
     volumes:
       - ./bot:/bot
     depends_on:
