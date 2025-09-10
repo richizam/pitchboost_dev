@@ -20,8 +20,7 @@ def analyze(client):
         "/v1/analyze",
         json={
             "user_id": "u1",
-            "scenario": "investor",
-            "duration_minutes": 1,
+            "scenario": "recommendation",
             "audio_url": "http://example.com/a.ogg",
             "media_duration_sec": 10,
         },

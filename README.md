@@ -28,10 +28,11 @@ docker network connect pitchboost-net <container>
   "user_id": "<tg_chat_id>",
   "audio_id": "<s3_key>",
   "request_message": "",
-  "scenario": "investor|client|academic",
+  "scenario": "recommendation|evaluation|adaptation",
   "duration_minutes": 1|3|5
 }
 ```
+Поле `duration_minutes` передаётся только для сценария `adaptation`.
 
 Результаты возвращаются в `KAFKA_TOPIC_OUT` тем же `user_id`.
 

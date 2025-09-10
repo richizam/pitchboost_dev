@@ -22,7 +22,7 @@ async def analyze(
     """
     1) Descarga el audio desde la URL recibida (Telegram).
     2) Sube a S3 con clave {ENV}/{uuid}.{ext}.
-    3) Publica en Kafka (topic processing) {user_id, audio_id, request_message, scenario, duration_minutes}.
+    3) Publica en Kafka (topic processing) {user_id, audio_id, request_message, scenario[, duration_minutes]}.
     4) Devuelve ACK con audio_key.
     """
     # Find or create user
@@ -61,13 +61,16 @@ async def analyze(
 
     # 3) Enviar a Kafka
     try:
+        if req.scenario == "adaptation" and req.duration_minutes is None:
+            raise HTTPException(status_code=400, detail="duration_minutes required")
         payload = {
             "user_id": req.user_id,
             "audio_id": key,
             "request_message": "",
             "scenario": req.scenario,
-            "duration_minutes": req.duration_minutes,
         }
+        if req.duration_minutes is not None:
+            payload["duration_minutes"] = req.duration_minutes
         kafka_producer.enqueue_for_processing(payload)
         kafka_producer.flush()
         crud.create_pitch(
